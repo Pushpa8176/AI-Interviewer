@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>All Uploaded Candidates</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      cursor: default;
+    }
+
+    thead {
+      background-color: #2c3e50;
+      color: #fff;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+
+    tbody tr:hover {
+      background-color: #e1f5fe;
+    }
+
+    a {
+      color: #3498db;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    small {
+      display: block;
+      color: #888;
+      margin-top: 5px;
+    }
+
+    td.name-cell {
+      cursor: pointer;
+      color: #d9534f;
+    }
+
+    td.email-cell {
+      cursor: pointer;
+      color: #007bff;
+      text-decoration: underline;
+    }
+
+    /* Modal Styles */
+    .modal {
+      display: none; 
+      position: fixed; 
+      z-index: 1000; 
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto; 
+      background-color: rgba(0,0,0,0.5); 
+    }
+
+    .modal-content {
+      background-color: #fff;
+      margin: 50px auto;
+      padding: 20px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 700px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      cursor: pointer;
+    }
+
+    .close:hover,
+    .close:focus {
+      color: #000;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    /* Responsive table inside modal */
+    .modal table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    .modal th, .modal td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .modal th {
+      background-color: #2c3e50;
+      color: white;
+    }
+
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      th {
+        display: none;
+      }
+
+      td {
+        padding: 10px;
+        position: relative;
+        text-align: right;
+      }
+
+      td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 10px;
+        width: 50%;
+        text-align: left;
+        font-weight: bold;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h2>All Uploaded Candidates</h2>
+  <table border="1" cellpadding="5">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Full Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Resume File</th>
+        <th>Score</th>
+        <th>Summary</th>
+      </tr>
+    </thead>
+    <tbody id="candidateTable"></tbody>
+  </table>
+
+  <!-- Modal -->
+  <div id="candidateModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h3 id="modalCandidateName">Candidate Details</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Question</th>
+            <th>Answer</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="modalAnswers"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="font-weight:bold;">Total Score</td>
+            <td id="modalTotalScore"></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="font-weight:bold;">Summary</td>
+            <td id="modalSummary"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById("candidateModal");
+    const modalClose = modal.querySelector(".close");
+    const modalCandidateName = document.getElementById("modalCandidateName");
+    const modalAnswers = document.getElementById("modalAnswers");
+    const modalTotalScore = document.getElementById("modalTotalScore");
+    const modalSummary = document.getElementById("modalSummary");
+
+    modalClose.onclick = function() {
+      modal.style.display = "none";
+    }
+
+    window.onclick = function(event) {
+      if (event.target == modal) modal.style.display = "none";
+    }
+
+    async function loadCandidates() {
+      try {
+        const res = await fetch('http://localhost:3000/candidates/all');
+        const data = await res.json();
+        const tbody = document.getElementById('candidateTable');
+        tbody.innerHTML = '';
+
+        data.forEach(c => {
+          const row = document.createElement('tr');
+
+          // Format upload date
+          const uploadDate = new Date(c.uploadedAt).toLocaleString();
+
+          // Clean original filename from backend
+          const cleanFileName = c.resumeFileOriginal || c.resumeFile;
+
+          // Display resume link with download
+          const resumeLink = c.resumeFile
+            ? `<a href="http://localhost:3000/uploads/${encodeURIComponent(c.resumeFile)}" target="_blank">${cleanFileName}</a>
+               <a href="http://localhost:3000/uploads/${encodeURIComponent(c.resumeFile)}" download style="margin-left:10px;">Download</a>
+               <br><small>Uploaded: ${uploadDate}</small>`
+            : 'No file';
+
+          row.innerHTML = `
+            <td data-label="ID">${c.id}</td>
+            <td data-label="Full Name" class="name-cell">${c.name}</td>
+            <td data-label="Email" class="email-cell">${c.email}</td>
+            <td data-label="Phone">${c.phone}</td>
+            <td data-label="Resume File">${resumeLink}</td>
+            <td data-label="Score">${c.score ?? '-'}</td>
+            <td data-label="Summary">${c.summary ?? '-'}</td>
+          `;
+
+          // Double-click to delete candidate
+          row.querySelector('.name-cell').addEventListener('dblclick', async () => {
+            const confirmDelete = confirm(`Do you really want to delete candidate "${c.name}"?`);
+            if (!confirmDelete) return;
+
+            try {
+              const delRes = await fetch(`http://localhost:3000/candidates/delete/${c.id}`, {
+                method: 'DELETE'
+              });
+              const delData = await delRes.json();
+              alert(delData.message);
+              loadCandidates();
+            } catch (err) {
+              alert('Failed to delete candidate: ' + err.message);
+            }
+          });
+
+          // Click on email to show interview details in modal
+          row.querySelector('.email-cell').addEventListener('click', async () => {
+            try {
+              const answersRes = await fetch(`http://localhost:3000/candidate-answers/all/${c.id}`);
+              const answers = await answersRes.json();
+
+              modalCandidateName.textContent = `Interview Details: ${c.name}`;
+              modalAnswers.innerHTML = '';
+              let totalScore = 0;
+
+              answers.forEach(a => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                  <td>${a.question}</td>
+                  <td>${a.response}</td>
+                  <td>${a.score}</td>
+                `;
+                modalAnswers.appendChild(tr);
+                totalScore += a.score;
+              });
+
+              modalTotalScore.textContent = totalScore;
+              modalSummary.textContent = c.summary ?? 'N/A';
+
+              modal.style.display = "block";
+
+            } catch (err) {
+              alert('Failed to fetch interview details: ' + err.message);
+            }
+          });
+
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        alert('Error fetching candidates: ' + err.message);
+      }
+    }
+
+    loadCandidates();
+  </script>
+</body>
+</html>

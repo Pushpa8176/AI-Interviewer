@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Interview Assistant</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; }
+  .container { max-width: 500px; margin: 30px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 20px; }
+  h2 { text-align: center; margin-bottom: 20px; color: #333; }
+  .info label { display: block; margin: 5px 0; }
+  .chat-window { border: 1px solid #ccc; border-radius: 8px; height: 250px; overflow-y: auto; padding: 10px; margin-bottom: 10px; background: #f9f9f9; display:flex; flex-direction: column;}
+  .chat-message { margin: 5px 0; padding: 6px 10px; border-radius: 12px; max-width: 90%; display: inline-block; }
+  .chat-message.ai { color: #fff; background: #007bff; align-self: flex-start; }
+  .chat-message.candidate { color: #333; background: #e1f5fe; align-self: flex-end; }
+  .input-section { display: flex; margin-top: 10px; }
+  .input-section input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #ccc; margin-right: 5px; }
+  .input-section button { padding: 10px 15px; border: none; background: #007bff; color: #fff; border-radius: 6px; cursor: pointer; }
+  .input-section button:hover { background: #0056b3; }
+  #timer { font-weight: bold; color: #d9534f; margin-bottom: 10px; }
+  #progress { margin-top: 10px; font-weight: bold; color: #333; }
+  .file-upload { margin-bottom: 15px; }
+  #results { margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; background: #f1f1f1; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h2>AI Interview Assistant</h2>
+
+  <div class="file-upload">
+    <label>Upload Resume (PDF/TXT):</label>
+    <input type="file" id="resumeFile" accept=".pdf,.txt"/>
+  </div>
+
+  <div class="info">
+    <label><strong>Candidate Name:</strong>
+      <input type="text" id="candidateNameInput" placeholder="Enter candidate name"/>
+    </label>
+    <label><strong>Email:</strong>
+      <input type="email" id="candidateEmailInput" placeholder="Enter candidate email"/>
+    </label>
+    <label><strong>Phone:</strong>
+      <input type="text" id="candidatePhoneInput" placeholder="Enter candidate phone"/>
+    </label>
+    <div class="input-section">
+      <button id="saveCandidateBtn">Save Candidate</button>
+    </div>
+  </div>
+
+  <div class="chat-window" id="chatWindow"></div>
+  <div id="timer"></div>
+
+  <div class="input-section">
+    <input type="text" id="answerInput" placeholder="Type your answer..." disabled />
+    <button id="submitAnswer" disabled>Submit</button>
+  </div>
+
+  <div id="progress"></div>
+
+  <div id="results">
+    <h3>Interview Results</h3>
+    <div id="answersList"></div>
+    <p id="totalScore" style="font-weight:bold;"></p>
+  </div>
+</div>
+
+<script>
+const resumeInput = document.getElementById('resumeFile');
+const candidateNameInput = document.getElementById('candidateNameInput');
+const candidateEmailInput = document.getElementById('candidateEmailInput');
+const candidatePhoneInput = document.getElementById('candidatePhoneInput');
+const saveCandidateBtn = document.getElementById('saveCandidateBtn');
+const chatWindow = document.getElementById('chatWindow');
+const timerDiv = document.getElementById('timer');
+const answerInput = document.getElementById('answerInput');
+const submitBtn = document.getElementById('submitAnswer');
+const progressDiv = document.getElementById('progress');
+const answersList = document.getElementById('answersList');
+const totalScoreDiv = document.getElementById('totalScore');
+
+let selectedFile = null;
+let extractedFileName = null;
+let candidateId = null;
+let currentQ = 0;
+let timer;
+let timeLeft;
+
+const questions = [
+  {text: 'What is React?', type: 'Easy', time: 20},
+  {text: 'What is Node.js?', type: 'Easy', time: 20},
+  {text: 'Explain Redux and why it is used?', type: 'Medium', time: 60},
+  {text: 'Difference between SQL and NoSQL databases?', type: 'Medium', time: 60},
+  {text: 'Explain event loop in JS.', type: 'Hard', time: 120},
+  {text: 'Design a REST API for a small app.', type: 'Hard', time: 120},
+];
+
+resumeInput.addEventListener('change', async (e) => {
+  selectedFile = e.target.files[0];
+  if (!selectedFile) return;
+
+  const formData = new FormData();
+  formData.append('resume', selectedFile);
+
+  try {
+    const res = await fetch('http://localhost:3000/candidates/extract', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!data.candidateInfo) {
+      addMessage('AI: Extraction failed.', 'ai');
+      console.error(data.error);
+      return;
+    }
+
+    candidateNameInput.value = data.candidateInfo.name || '';
+    candidateEmailInput.value = data.candidateInfo.email || '';
+    candidatePhoneInput.value = data.candidateInfo.phone || '';
+    extractedFileName = data.resumeFile;
+
+    addMessage('AI: Candidate info extracted. You can edit before saving.', 'ai');
+
+  } catch (err) {
+    addMessage('AI: Error connecting to backend.', 'ai');
+    console.error(err);
+  }
+});
+
+saveCandidateBtn.addEventListener('click', async () => {
+  if (!candidateNameInput.value || !candidateEmailInput.value) {
+    addMessage('AI: Name and Email are required!', 'ai');
+    return;
+  }
+
+  try {
+    const res = await fetch('http://localhost:3000/candidates/upload', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: candidateNameInput.value,
+        email: candidateEmailInput.value,
+        phone: candidatePhoneInput.value,
+        resumeFile: extractedFileName
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.error === 'Email already exists' || data.message === 'Email already exists') {
+      addMessage('AI: Email already exists! Cannot proceed to interview.', 'ai');
+      return; // stop interview if email exists
+    }
+
+    if (!data.candidate?.id) {
+      addMessage('AI: Candidate save failed(Email Exists).', 'ai');
+      return;
+    }
+
+    candidateId = data.candidate.id;
+    addMessage('AI: Candidate saved successfully! Ready to start interview.', 'ai');
+
+    // Reset chat and answer input
+    chatWindow.innerHTML = '';
+    answerInput.value = '';
+    answerInput.disabled = true;
+    submitBtn.disabled = true;
+    answersList.innerHTML = '';
+    totalScoreDiv.textContent = '';
+    currentQ = 0;
+
+    setTimeout(() => startQuestion(currentQ), 1000);
+
+  } catch (err) {
+    addMessage('AI: Error saving candidate.', 'ai');
+    console.error(err);
+  }
+});
+
+function addMessage(msg, sender) {
+  const p = document.createElement('div');
+  p.classList.add('chat-message', sender);
+  p.innerText = msg;
+  chatWindow.appendChild(p);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+function startQuestion(index) {
+  if (index >= questions.length) {
+    addMessage('AI: Interview complete! Calculating score...', 'ai');
+    answerInput.disabled = true;
+    submitBtn.disabled = true;
+    progressDiv.textContent = '';
+    calculateFinalScore();
+    return;
+  }
+
+  const q = questions[index];
+  addMessage(`AI: Question ${index + 1} (${q.type}, ${q.time}s): ${q.text}`, 'ai');
+  timeLeft = q.time;
+  timerDiv.textContent = `Timer: ${timeLeft}s`;
+  answerInput.disabled = false;
+  submitBtn.disabled = false;
+  progressDiv.textContent = `Progress: Question ${index + 1} of ${questions.length}`;
+
+  timer = setInterval(() => {
+    timeLeft--;
+    timerDiv.textContent = `Timer: ${timeLeft}s`;
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      const response = answerInput.value || '';
+      const score = calculateScore(q.text, response);
+      saveAnswer(q.text, response, score);
+      addMessage(`AI: Time's up! Moving to next question.`, 'ai');
+      answerInput.value = '';
+      answerInput.disabled = true;
+      submitBtn.disabled = true;
+      currentQ++;
+      setTimeout(() => startQuestion(currentQ), 500);
+    }
+  }, 1000);
+}
+
+// Dynamic score calculation based on keywords
+function calculateScore(questionText, answerText) {
+  const correctAnswers = {
+    "What is React?": ["react", "library", "ui"],
+    "What is Node.js?": ["node", "javascript", "runtime"],
+    "Explain Redux and why it is used?": ["redux", "state", "management"],
+    "Difference between SQL and NoSQL databases?": ["sql", "nosql", "relational", "non-relational"],
+    "Explain event loop in JS.": ["event loop", "asynchronous", "callback"],
+    "Design a REST API for a small app.": ["rest", "api", "endpoint", "http"]
+  };
+
+  const keywords = correctAnswers[questionText] || [];
+  let score = 0;
+  const answerLower = answerText.toLowerCase();
+  keywords.forEach(word => {
+    if (answerLower.includes(word)) score += 2; // 2 points per keyword
+  });
+  return Math.min(score, 8);
+}
+
+submitBtn.addEventListener('click', async () => {
+  if (!answerInput.value) return;
+  const q = questions[currentQ];
+  addMessage(`Candidate: ${answerInput.value}`, 'candidate');
+
+  clearInterval(timer);
+  const score = calculateScore(q.text, answerInput.value);
+  addMessage(`AI: Answer received. Score: ${score}. Moving to next question...`, 'ai');
+
+  await saveAnswer(q.text, answerInput.value, score);
+
+  answerInput.value = '';
+  answerInput.disabled = true;
+  submitBtn.disabled = true;
+  currentQ++;
+  setTimeout(() => startQuestion(currentQ), 500);
+});
+
+async function saveAnswer(question, response, score = 0) {
+  if (!candidateId) {
+    console.error('Candidate not saved yet');
+    return;
+  }
+  try {
+    await fetch('http://localhost:3000/candidate-answers', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({candidateId, question, response, score})
+    });
+  } catch (err) {
+    console.error('Failed to save answer:', err);
+  }
+}
+
+async function calculateFinalScore() {
+  if (!candidateId) return;
+  try {
+    const res = await fetch(`http://localhost:3000/candidate-answers/all/${candidateId}`);
+    const answers = await res.json();
+    let totalScore = 0;
+
+    answersList.innerHTML = '';
+    answers.forEach((a, idx) => {
+      totalScore += a.score;
+      const p = document.createElement('p');
+      p.innerHTML = `<strong>Q${idx+1}:</strong> ${a.question} <br> <strong>Answer:</strong> ${a.response} <br> <strong>Score:</strong> ${a.score}`;
+      p.style.marginBottom = '10px';
+      answersList.appendChild(p);
+    });
+
+    totalScoreDiv.textContent = `Total Score: ${totalScore}`;
+
+    // Save final score and summary
+    await fetch(`http://localhost:3000/candidates/upload-final/${candidateId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({score: totalScore, summary: 'AI-generated summary here'})
+    });
+
+    addMessage(`AI: Interview completed! Total Score: ${totalScore}`, 'ai');
+
+    candidateId = null;
+    selectedFile = null;
+    extractedFileName = null;
+
+  } catch (err) {
+    addMessage('AI: Error saving candidate.', 'ai');
+    console.error(err);
+  }
+}
+</script>
+
+</body>
+</html>
